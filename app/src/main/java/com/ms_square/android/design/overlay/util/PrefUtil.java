@@ -11,6 +11,8 @@ public class PrefUtil {
 
     public static final String PREF_FULLSCREEN = "pref_fullscreen";
 
+    public static final String PREF_OVERLAY_ENABLED = "pref_overlay_enabled";
+
     public static final String PREF_DESIGN_IMAGE_ENABLED = "pref_design_image_enabled";
 
     public static final String PREF_DESIGN_IMAGE_URI = "pref_design_image_uri";

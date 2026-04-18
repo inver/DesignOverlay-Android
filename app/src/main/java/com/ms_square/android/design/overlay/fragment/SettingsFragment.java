@@ -11,11 +11,18 @@ import android.preference.ListPreference;
 import android.preference.Preference;
 import android.preference.PreferenceFragment;
 import android.preference.PreferenceManager;
+import android.preference.TwoStatePreference;
+import android.provider.Settings;
 import android.util.TypedValue;
 import android.widget.Toast;
 
+import androidx.core.content.ContextCompat;
+
 import com.ms_square.android.design.overlay.BuildConfig;
 import com.ms_square.android.design.overlay.R;
+import com.ms_square.android.design.overlay.app.AppEnvironment;
+import com.ms_square.android.design.overlay.event.OverlayServiceEvent;
+import com.ms_square.android.design.overlay.service.DesignOverlayService;
 import com.ms_square.android.design.overlay.task.SafeAsyncTask;
 import com.ms_square.android.design.overlay.util.ImageUtil;
 import com.ms_square.android.design.overlay.util.PrefUtil;
@@ -23,19 +30,27 @@ import com.ms_square.android.design.overlay.view.ImagePreference;
 import com.ms_square.android.util.AppUtil;
 import com.ms_square.android.util.ToastMaster;
 
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 
 import timber.log.Timber;
 
-public class SettingsFragment extends PreferenceFragment implements Preference.OnPreferenceClickListener {
+public class SettingsFragment extends PreferenceFragment implements Preference.OnPreferenceClickListener, Preference.OnPreferenceChangeListener {
 
     private static final int REQUEST_CODE_IMAGE = 10000;
+
+    private static final int REQUEST_CODE_OVERLAY_PERMISSION = 10001;
 
     private Context mAppContext;
 
     private ImagePreference mImagePreference;
+
+    private TwoStatePreference mOverlayEnabledPref;
 
     private int mImageSize;
 
@@ -56,6 +71,9 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
         // updated to reflect the new value, per the Android Design
         // guidelines.
         bindPreferenceSummaryToValue(findPreference(PrefUtil.PREF_GRID_SIZE));
+
+        mOverlayEnabledPref = (TwoStatePreference) findPreference(PrefUtil.PREF_OVERLAY_ENABLED);
+        mOverlayEnabledPref.setOnPreferenceChangeListener(this);
 
         mAppContext = getActivity().getApplicationContext();
 
@@ -78,6 +96,51 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
     }
 
     @Override
+    public void onStart() {
+        super.onStart();
+        EventBus.getDefault().register(this);
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        EventBus.getDefault().unregister(this);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        mOverlayEnabledPref.setChecked(AppEnvironment.INSTANCE.isOverlayServiceRunning());
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onEventMainThread(OverlayServiceEvent event) {
+        if (mOverlayEnabledPref != null) {
+            mOverlayEnabledPref.setChecked(event.isRunning);
+        }
+    }
+
+    @Override
+    public boolean onPreferenceChange(Preference preference, Object newValue) {
+        if (PrefUtil.PREF_OVERLAY_ENABLED.equals(preference.getKey())) {
+            boolean isChecked = (boolean) newValue;
+            if (isChecked) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(getActivity())) {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:" + getActivity().getPackageName()));
+                    startActivityForResult(intent, REQUEST_CODE_OVERLAY_PERMISSION);
+                    return false;
+                }
+                ContextCompat.startForegroundService(getActivity(), DesignOverlayService.createIntent(getActivity()));
+            } else {
+                getActivity().stopService(DesignOverlayService.createIntent(getActivity()));
+            }
+            return true;
+        }
+        return false;
+    }
+
+    @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_CODE_IMAGE) {
             if (resultCode == Activity.RESULT_OK && data != null) {
@@ -88,6 +151,13 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
                             Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 }
                 loadDesignImage(uri);
+            }
+        } else if (requestCode == REQUEST_CODE_OVERLAY_PERMISSION) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(getActivity())) {
+                mOverlayEnabledPref.setChecked(true);
+                ContextCompat.startForegroundService(getActivity(), DesignOverlayService.createIntent(getActivity()));
+            } else {
+                mOverlayEnabledPref.setChecked(false);
             }
         } else {
             super.onActivityResult(requestCode, resultCode, data);

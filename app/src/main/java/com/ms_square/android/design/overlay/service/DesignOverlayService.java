@@ -1,6 +1,7 @@
 package com.ms_square.android.design.overlay.service;
 
 import android.annotation.TargetApi;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -16,7 +17,7 @@ import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.IBinder;
-import android.support.v4.app.NotificationCompat;
+import androidx.core.app.NotificationCompat;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
@@ -37,6 +38,8 @@ import timber.log.Timber;
 public class DesignOverlayService extends Service {
 
     private static final int NOTIFICATION_ID = 10000;
+
+    private static final String NOTIFICATION_CHANNEL_ID = "design_overlay_service";
 
     private static final String ACTION_DISMISS = "com.ms_square.android.design.overlay.ACTION_DISMISS";
 
@@ -66,7 +69,11 @@ public class DesignOverlayService extends Service {
 
         showOverlay();
 
-        registerReceiver(mReceiver, new IntentFilter(ACTION_DISMISS));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(mReceiver, new IntentFilter(ACTION_DISMISS), Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(mReceiver, new IntentFilter(ACTION_DISMISS));
+        }
 
         PrefUtil.registerOnSharedPreferenceChangeListener(this, mPrefListener);
 
@@ -194,7 +201,16 @@ public class DesignOverlayService extends Service {
     }
 
     private void showNotification() {
-        NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID,
+                    getString(R.string.app_name),
+                    NotificationManager.IMPORTANCE_LOW
+            );
+            mNotificationManager.createNotificationChannel(channel);
+        }
+
+        NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(getString(R.string.notification_big_text)))
                 .setSmallIcon(R.drawable.ic_notification)
                 .setOngoing(true)
@@ -214,12 +230,17 @@ public class DesignOverlayService extends Service {
     }
 
     private PendingIntent getNotificationIntent(String action) {
+        int flags = PendingIntent.FLAG_CANCEL_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+
         if (action == null) {
             Intent intent = SettingsActivity.createIntent(this);
-            return PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+            return PendingIntent.getActivity(this, 0, intent, flags);
         } else {
             Intent intent = new Intent(action);
-            return PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+            return PendingIntent.getBroadcast(this, 0, intent, flags);
         }
     }
 
@@ -260,15 +281,7 @@ public class DesignOverlayService extends Service {
                     updateGridVisibility();
                     break;
                 }
-                case PrefUtil.PREF_GRID_SIZE: {
-                    updateGridSize();
-                    break;
-                }
-                case PrefUtil.PREF_ALIGN_RIGHT: {
-                    updateGridSize();
-                    break;
-                }
-                case PrefUtil.PREF_ALIGN_BOTTOM: {
+                case PrefUtil.PREF_GRID_SIZE, PrefUtil.PREF_ALIGN_RIGHT, PrefUtil.PREF_ALIGN_BOTTOM: {
                     updateGridSize();
                     break;
                 }
@@ -281,11 +294,24 @@ public class DesignOverlayService extends Service {
     };
 
     private static WindowManager.LayoutParams createDefaultSystemWindowParams(boolean isFullScreen) {
+        int type;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+        } else {
+            type = WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY;
+        }
+
+        int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        if (isFullScreen) {
+            flags |= WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
+        }
+
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY,
-                isFullScreen ? WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN : 0,
+                type,
+                flags,
                 PixelFormat.TRANSLUCENT);
         params.format = PixelFormat.RGBA_8888;
         return params;

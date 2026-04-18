@@ -6,6 +6,9 @@
     <!-- To overlay view above all the application UIs -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <!-- Looks this is needed to read Google+ photos -->
     <uses-permission android:name="com.google.android.apps.photos.permission.GOOGLE_PHOTOS"/>
 
@@ -19,7 +22,8 @@
         <activity
             android:name=".activity.SettingsActivity_"
             android:label="@string/app_name"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -27,7 +31,10 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".service.DesignOverlayService" />
+        <service
+            android:name=".service.DesignOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
 
     </application>
 

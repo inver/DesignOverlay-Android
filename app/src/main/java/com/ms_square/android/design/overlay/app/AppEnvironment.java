@@ -2,7 +2,7 @@ package com.ms_square.android.design.overlay.app;
 
 import com.ms_square.android.design.overlay.event.OverlayServiceEvent;
 
-import de.greenrobot.event.EventBus;
+import org.greenrobot.eventbus.EventBus;
 
 public enum AppEnvironment {
     INSTANCE;
