@@ -16,15 +16,14 @@ import android.graphics.PixelFormat;
 import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
-
-import androidx.annotation.Nullable;
-import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
-
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
+
+import androidx.annotation.Nullable;
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 
 import com.ms_square.android.design.overlay.R;
 import com.ms_square.android.design.overlay.activity.SettingsActivity;
@@ -84,7 +83,7 @@ public class DesignOverlayService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        return Service.START_NOT_STICKY;
+        return Service.START_STICKY;
     }
 
     @Override
@@ -254,7 +253,8 @@ public class DesignOverlayService extends Service {
             case PrefUtil.PREF_DESIGN_IMAGE_URI -> updateImage();
             case PrefUtil.PREF_DESIGN_IMAGE_ALPHA -> updateImageAlpha();
             case PrefUtil.PREF_GRID_ENABLED -> updateGridVisibility();
-            case PrefUtil.PREF_GRID_SIZE, PrefUtil.PREF_ALIGN_RIGHT, PrefUtil.PREF_ALIGN_BOTTOM -> updateGridSize();
+            case PrefUtil.PREF_GRID_SIZE, PrefUtil.PREF_ALIGN_RIGHT, PrefUtil.PREF_ALIGN_BOTTOM ->
+                    updateGridSize();
             case PrefUtil.PREF_GRID_COLOR -> updateGridColor();
         }
     };
