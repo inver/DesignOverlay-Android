@@ -18,8 +18,8 @@ android {
         javaCompileOptions {
             annotationProcessorOptions {
                 arguments = [
-                    "resourcePackageName": "com.ms_square.android.design.overlay",
-                    "androidManifestFile": "$projectDir/src/main/AndroidManifest.xml"
+                        "resourcePackageName": "com.ms_square.android.design.overlay",
+                        "androidManifestFile": "$projectDir/src/main/AndroidManifest.xml"
                 ]
             }
         }
@@ -51,23 +51,18 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 
     // Support libraries migrated to AndroidX
-    implementation "androidx.legacy:legacy-support-v4:1.0.0"
-    implementation "androidx.appcompat:appcompat:1.7.1"
-    implementation "androidx.annotation:annotation:1.10.0"
+    implementation libs.legacySupportV4
+    implementation libs.appcompat
+    implementation libs.annotation
+    implementation libs.preference
 
     // Android Annotations Library
-    implementation "org.androidannotations:androidannotations-api:${project.androidAnnotationsVersion}"
+    implementation libs.androidannotationsApi
     annotationProcessor "org.androidannotations:androidannotations:${project.androidAnnotationsVersion}"
 
     // EventBus
-    implementation "org.greenrobot:eventbus:${project.eventBusVersion}"
+    implementation libs.eventbus
 
     // Timber for logging
-    implementation "com.jakewharton.timber:timber:${project.timberVersion}"
-
-    // Color Picker Preference
-    implementation project(':ColorPickerPreference')
-
-    // Android Utility Library
-    // implementation "com.ms-square:android-util:${project.androidUtilVersion}"
+    implementation libs.timber
 }

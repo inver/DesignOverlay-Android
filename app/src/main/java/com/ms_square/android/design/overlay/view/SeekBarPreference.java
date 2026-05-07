@@ -1,30 +1,16 @@
-/*
- * Copyright (C) 2011 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.ms_square.android.design.overlay.view;
 
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.os.Parcel;
 import android.os.Parcelable;
-import android.preference.Preference;
 import android.util.AttributeSet;
-import android.view.View;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
+
+import androidx.annotation.NonNull;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceViewHolder;
 
 import com.ms_square.android.design.overlay.R;
 
@@ -47,9 +33,9 @@ public class SeekBarPreference extends Preference
     }
 
     @Override
-    protected void onBindView(View view) {
-        super.onBindView(view);
-        SeekBar seekBar = (SeekBar) view.findViewById(R.id.seekbar);
+    public void onBindViewHolder(@NonNull PreferenceViewHolder holder) {
+        super.onBindViewHolder(holder);
+        SeekBar seekBar = (SeekBar) holder.findViewById(R.id.seekbar);
         seekBar.setOnSeekBarChangeListener(this);
         seekBar.setMax(mMax);
         seekBar.setProgress(mProgress);
@@ -57,18 +43,12 @@ public class SeekBarPreference extends Preference
     }
 
     @Override
-    public CharSequence getSummary() {
-        return null;
+    public void onSetInitialValue(Object defaultValue) {
+        setProgress(getPersistedInt(mProgress));
     }
 
     @Override
-    protected void onSetInitialValue(boolean restoreValue, Object defaultValue) {
-        setProgress(restoreValue ? getPersistedInt(mProgress)
-                : (Integer) defaultValue);
-    }
-
-    @Override
-    protected Object onGetDefaultValue(TypedArray a, int index) {
+    protected Object onGetDefaultValue(@NonNull TypedArray a, int index) {
         return a.getInt(index, 0);
     }
 
@@ -84,21 +64,17 @@ public class SeekBarPreference extends Preference
     }
 
     private void setProgress(int progress, boolean notifyChanged) {
-        if (progress > mMax) {
-            progress = mMax;
-        }
-        if (progress < 0) {
-            progress = 0;
-        }
-        if (progress != mProgress) {
-            mProgress = progress;
-            persistInt(progress);
+        int targetProgress = Math.max(0, Math.min(progress, mMax));
+        if (targetProgress != mProgress) {
+            mProgress = targetProgress;
+            persistInt(targetProgress);
             if (notifyChanged) {
                 notifyChanged();
             }
         }
     }
 
+    @SuppressWarnings("unused")
     public int getProgress() {
         return mProgress;
     }
@@ -162,14 +138,13 @@ public class SeekBarPreference extends Preference
 
     @Override
     protected void onRestoreInstanceState(Parcelable state) {
-        if (!state.getClass().equals(SavedState.class)) {
+        if (!(state instanceof SavedState myState)) {
             // Didn't save state for us in onSaveInstanceState
             super.onRestoreInstanceState(state);
             return;
         }
 
         // Restore the instance state
-        SavedState myState = (SavedState) state;
         super.onRestoreInstanceState(myState.getSuperState());
         mProgress = myState.progress;
         mMax = myState.max;
@@ -207,9 +182,8 @@ public class SeekBarPreference extends Preference
             super(superState);
         }
 
-        @SuppressWarnings("unused")
         public static final Parcelable.Creator<SavedState> CREATOR =
-                new Parcelable.Creator<SavedState>() {
+                new Parcelable.Creator<>() {
                     public SavedState createFromParcel(Parcel in) {
                         return new SavedState(in);
                     }

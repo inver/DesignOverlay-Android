@@ -1,4 +1,0 @@
-[submodule "app/libs/android-ColorPickerPreference"]                                             
-  path = app/libs/android-ColorPickerPreference                                                    
-  url = https://github.com/attenzione/android-ColorPickerPreference.git                           
-  ignore = dirty

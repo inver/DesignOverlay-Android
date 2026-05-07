@@ -12,4 +12,42 @@
         <item>16</item>
         <item>32</item>
     </string-array>
+
+    <string-array name="grid_color_entries">
+        <item>Red</item>
+        <item>Pink</item>
+        <item>Purple</item>
+        <item>Indigo</item>
+        <item>Blue</item>
+        <item>Cyan</item>
+        <item>Teal</item>
+        <item>Green</item>
+        <item>Lime</item>
+        <item>Yellow</item>
+        <item>Orange</item>
+        <item>Brown</item>
+        <item>Grey</item>
+        <item>Blue Grey</item>
+        <item>Black</item>
+        <item>White</item>
+    </string-array>
+
+    <string-array name="grid_color_entry_values" translatable="false">
+        <item>#CCF44336</item>
+        <item>#CCE91E63</item>
+        <item>#CC9C27B0</item>
+        <item>#CC3F51B5</item>
+        <item>#CC2196F3</item>
+        <item>#CC00BCD4</item>
+        <item>#CC009688</item>
+        <item>#CC4CAF50</item>
+        <item>#CCCDDC39</item>
+        <item>#CCFFEB3B</item>
+        <item>#CCFF9800</item>
+        <item>#CC795548</item>
+        <item>#CC9E9E9E</item>
+        <item>#CC607D8B</item>
+        <item>#CC000000</item>
+        <item>#CCFFFFFF</item>
+    </string-array>
 </resources>

@@ -35,10 +35,10 @@ public class GridView extends View {
 
         final float defaultLineWidth = DimenUtil.convertToPixelFromDip(context, 1f); // 1dp
 
-        TypedArray typedArray = context.obtainStyledAttributes(attrs, R.styleable.GridView);
-        mPaint.setColor(typedArray.getColor(R.styleable.GridView_lineColor, 0x7732cd32));
-        mPaint.setStrokeWidth(typedArray.getDimension(R.styleable.GridView_lineWidth, defaultLineWidth));
-        typedArray.recycle();
+        try (TypedArray typedArray = context.obtainStyledAttributes(attrs, R.styleable.GridView)) {
+            mPaint.setColor(typedArray.getColor(R.styleable.GridView_lineColor, 0xCCCDDC39));
+            mPaint.setStrokeWidth(typedArray.getDimension(R.styleable.GridView_lineWidth, defaultLineWidth));
+        }
 
         mPaint.setStyle(Paint.Style.STROKE);
     }
@@ -71,36 +71,28 @@ public class GridView extends View {
         if (numHorizontalPoints + numVerticalPoints > 0) {
             mPoints = new float[numHorizontalPoints + numVerticalPoints];
 
-            int positionShift = 0;
-            if (mAlignBottom) {
-                positionShift = - (mGridSize - height % mGridSize);
-            }
+            final int hShift = mAlignBottom ? -(mGridSize - height % mGridSize) : 0;
 
             // set up horizontal lines
-            float gap = mGridSize;
             for (int i = 0; i <= numHorizontalLines; i++) {
+                float gap = (i + 1) * (float) mGridSize;
                 int base = i * 4;
                 mPoints[base] = 0f;
-                mPoints[base + 1] = gap + positionShift;
+                mPoints[base + 1] = gap + hShift;
                 mPoints[base + 2] = (float) width;
-                mPoints[base + 3] = gap + positionShift;
-                gap = gap + mGridSize;
+                mPoints[base + 3] = gap + hShift;
             }
 
-            positionShift = 0;
-            if (mAlignRight) {
-                positionShift = - (mGridSize - width % mGridSize);
-            }
+            final int vShift = mAlignRight ? -(mGridSize - width % mGridSize) : 0;
 
             // set up vertical lines
-            gap = mGridSize;
             for (int i = 0; i <= numVerticalLines; i++) {
+                float gap = (i + 1) * (float) mGridSize;
                 int base = i * 4 + numHorizontalPoints;
-                mPoints[base] = gap + positionShift;
+                mPoints[base] = gap + vShift;
                 mPoints[base + 1] = 0f;
-                mPoints[base + 2] = gap + positionShift;
+                mPoints[base + 2] = gap + vShift;
                 mPoints[base + 3] = (float) height;
-                gap = gap + mGridSize;
             }
         } else {
             mPoints = null;
@@ -115,7 +107,7 @@ public class GridView extends View {
     }
 
     @Override
-    public void onDraw(Canvas canvas) {
+    public void onDraw(@androidx.annotation.NonNull Canvas canvas) {
         if (mPoints != null) {
             canvas.drawLines(mPoints, mPaint);
         }

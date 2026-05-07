@@ -7,23 +7,26 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.preference.ListPreference;
-import android.preference.Preference;
-import android.preference.PreferenceFragment;
-import android.preference.PreferenceManager;
-import android.preference.TwoStatePreference;
 import android.provider.Settings;
 import android.util.TypedValue;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
+import androidx.preference.ListPreference;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceFragmentCompat;
+import androidx.preference.PreferenceManager;
+import androidx.preference.TwoStatePreference;
 
 import com.ms_square.android.design.overlay.BuildConfig;
 import com.ms_square.android.design.overlay.R;
 import com.ms_square.android.design.overlay.app.AppEnvironment;
 import com.ms_square.android.design.overlay.event.OverlayServiceEvent;
 import com.ms_square.android.design.overlay.service.DesignOverlayService;
-import com.ms_square.android.design.overlay.task.SafeAsyncTask;
 import com.ms_square.android.design.overlay.util.ImageUtil;
 import com.ms_square.android.design.overlay.util.PrefUtil;
 import com.ms_square.android.design.overlay.view.ImagePreference;
@@ -37,14 +40,12 @@ import org.greenrobot.eventbus.ThreadMode;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import timber.log.Timber;
 
-public class SettingsFragment extends PreferenceFragment implements Preference.OnPreferenceClickListener, Preference.OnPreferenceChangeListener {
-
-    private static final int REQUEST_CODE_IMAGE = 10000;
-
-    private static final int REQUEST_CODE_OVERLAY_PERMISSION = 10001;
+public class SettingsFragment extends PreferenceFragmentCompat implements Preference.OnPreferenceClickListener, Preference.OnPreferenceChangeListener {
 
     private Context mAppContext;
 
@@ -54,36 +55,66 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
 
     private int mImageSize;
 
-    public static SettingsFragment newInstance() {
-        SettingsFragment fragment = new SettingsFragment();
-        //Bundle args = new Bundle();
-        //fragment.setArguments(args);
-        return fragment;
-    }
+    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+
+    private final ActivityResultLauncher<Intent> mImagePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    final Uri uri = result.getData().getData();
+                    if (uri != null) {
+                    // needs to take the persistable permission
+                    mAppContext.getContentResolver().takePersistableUriPermission(uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    loadDesignImage(uri);
+                }
+                }
+            }
+    );
+
+    private final ActivityResultLauncher<Intent> mOverlayPermissionLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(requireActivity())) {
+                    if (mOverlayEnabledPref != null) {
+                        mOverlayEnabledPref.setChecked(true);
+                    }
+                    ContextCompat.startForegroundService(requireActivity(), DesignOverlayService.createIntent(requireActivity()));
+                } else {
+                    if (mOverlayEnabledPref != null) {
+                        mOverlayEnabledPref.setChecked(false);
+                    }
+                }
+            }
+    );
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        addPreferencesFromResource(R.xml.preferences);
+    public void onCreatePreferences(@Nullable Bundle savedInstanceState, @Nullable String rootKey) {
+        setPreferencesFromResource(R.xml.preferences, rootKey);
 
         // Bind the summaries of EditText/List/Dialog/Ringtone preferences
         // to their values. When their values change, their summaries are
         // updated to reflect the new value, per the Android Design
         // guidelines.
         bindPreferenceSummaryToValue(findPreference(PrefUtil.PREF_GRID_SIZE));
+        bindPreferenceSummaryToValue(findPreference(PrefUtil.PREF_GRID_COLOR));
 
-        mOverlayEnabledPref = (TwoStatePreference) findPreference(PrefUtil.PREF_OVERLAY_ENABLED);
-        mOverlayEnabledPref.setOnPreferenceChangeListener(this);
+        mOverlayEnabledPref = findPreference(PrefUtil.PREF_OVERLAY_ENABLED);
+        if (mOverlayEnabledPref != null) {
+            mOverlayEnabledPref.setOnPreferenceChangeListener(this);
+        }
 
-        mAppContext = getActivity().getApplicationContext();
+        mAppContext = requireContext().getApplicationContext();
 
         // get listPreferredItemHeight value in pixel and set it to mImageSize
         TypedValue value = new TypedValue();
-        getActivity().getTheme().resolveAttribute(android.R.attr.listPreferredItemHeight, value, true);
+        requireActivity().getTheme().resolveAttribute(android.R.attr.listPreferredItemHeight, value, true);
         mImageSize = (int) value.getDimension(getResources().getDisplayMetrics());
 
-        mImagePreference = (ImagePreference) findPreference(PrefUtil.PREF_DESIGN_IMAGE_URI);
-        mImagePreference.setOnPreferenceClickListener(this);
+        mImagePreference = findPreference(PrefUtil.PREF_DESIGN_IMAGE_URI);
+        if (mImagePreference != null) {
+            mImagePreference.setOnPreferenceClickListener(this);
+        }
         // load image if already set
         Uri imageUri = PrefUtil.getDesignImageUri(mAppContext);
         if (imageUri != null) {
@@ -92,7 +123,9 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
 
         // Set application version
         Preference appVer = findPreference("pref_app_version");
-        appVer.setSummary(AppUtil.getVersion(mAppContext) + " - " + BuildConfig.BUILD_NUMBER);
+        if (appVer != null) {
+            appVer.setSummary(AppUtil.getVersion(mAppContext) + " - " + BuildConfig.BUILD_NUMBER);
+        }
     }
 
     @Override
@@ -108,11 +141,20 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
     }
 
     @Override
-    public void onResume() {
-        super.onResume();
-        mOverlayEnabledPref.setChecked(AppEnvironment.INSTANCE.isOverlayServiceRunning());
+    public void onDestroy() {
+        super.onDestroy();
+        mExecutor.shutdown();
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (mOverlayEnabledPref != null) {
+            mOverlayEnabledPref.setChecked(AppEnvironment.INSTANCE.isOverlayServiceRunning());
+        }
+    }
+
+    @SuppressWarnings("unused")
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onEventMainThread(OverlayServiceEvent event) {
         if (mOverlayEnabledPref != null) {
@@ -121,19 +163,20 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
     }
 
     @Override
-    public boolean onPreferenceChange(Preference preference, Object newValue) {
-        if (PrefUtil.PREF_OVERLAY_ENABLED.equals(preference.getKey())) {
+    public boolean onPreferenceChange(@NonNull Preference preference, Object newValue) {
+        String key = preference.getKey();
+        if (PrefUtil.PREF_OVERLAY_ENABLED.equals(key)) {
             boolean isChecked = (boolean) newValue;
             if (isChecked) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(getActivity())) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(requireActivity())) {
                     Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:" + getActivity().getPackageName()));
-                    startActivityForResult(intent, REQUEST_CODE_OVERLAY_PERMISSION);
+                            Uri.parse("package:" + requireActivity().getPackageName()));
+                    mOverlayPermissionLauncher.launch(intent);
                     return false;
                 }
-                ContextCompat.startForegroundService(getActivity(), DesignOverlayService.createIntent(getActivity()));
+                ContextCompat.startForegroundService(requireActivity(), DesignOverlayService.createIntent(requireActivity()));
             } else {
-                getActivity().stopService(DesignOverlayService.createIntent(getActivity()));
+                requireActivity().stopService(DesignOverlayService.createIntent(requireActivity()));
             }
             return true;
         }
@@ -141,83 +184,46 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
     }
 
     @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_CODE_IMAGE) {
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                final Uri uri = data.getData();
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                    // needs to take the persistable permission for post kitkat devices
-                    mAppContext.getContentResolver().takePersistableUriPermission(uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                }
-                loadDesignImage(uri);
-            }
-        } else if (requestCode == REQUEST_CODE_OVERLAY_PERMISSION) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(getActivity())) {
-                mOverlayEnabledPref.setChecked(true);
-                ContextCompat.startForegroundService(getActivity(), DesignOverlayService.createIntent(getActivity()));
-            } else {
-                mOverlayEnabledPref.setChecked(false);
-            }
-        } else {
-            super.onActivityResult(requestCode, resultCode, data);
-        }
-    }
-
-    @Override
-    public boolean onPreferenceClick(Preference preference) {
+    public boolean onPreferenceClick(@NonNull Preference preference) {
         if (PrefUtil.PREF_DESIGN_IMAGE_URI.equals(preference.getKey())) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                intent.setFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-                intent.setType("image/*");
-                startActivityForResult(intent, REQUEST_CODE_IMAGE);
-            } else {
-                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                intent.setType("image/*");
-                startActivityForResult(Intent.createChooser(intent,
-                        getString(R.string.intent_chooser_choose_image)), REQUEST_CODE_IMAGE);
-            }
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            intent.setType("image/*");
+            mImagePickerLauncher.launch(intent);
             return true;
         }
         return false;
     }
 
     private void loadDesignImage(final Uri uri) {
-        new SafeAsyncTask<Uri, Void, Bitmap>(getActivity()) {
-            @Override
-            protected Bitmap onRun(Uri... params) {
-                Bitmap bitmap = null;
-                InputStream stream = null;
-                try {
-                    stream = mAppContext.getContentResolver().openInputStream(params[0]);
-                    bitmap = ImageUtil.decodeSampledBitmapFromStream(stream, mImageSize, mImageSize);
-                } catch (FileNotFoundException fe) {
-                    Timber.w("File was not found: %s", fe.toString());
-                } catch (SecurityException se) {
-                    Timber.w("Probably no longer have access permission to the uri: %s", se.toString());
-                    // clear stored image Uri
-                    PrefUtil.setDesignImageUri(mAppContext, null);
-                } finally {
-                    try {
-                        if (stream != null) {
-                            stream.close();
-                        }
-                    } catch (IOException ignore) {}
+        mExecutor.execute(() -> {
+            Bitmap decodedBitmap = null;
+            try (InputStream stream = mAppContext.getContentResolver().openInputStream(uri)) {
+                if (stream != null) {
+                    decodedBitmap = ImageUtil.decodeSampledBitmapFromStream(stream, mImageSize, mImageSize);
                 }
-                return bitmap;
+            } catch (FileNotFoundException fe) {
+                Timber.w("File was not found: %s", fe.toString());
+            } catch (SecurityException se) {
+                Timber.w("Probably no longer have access permission to the uri: %s", se.toString());
+                // clear stored image Uri
+                PrefUtil.setDesignImageUri(mAppContext, null);
+            } catch (IOException ignore) {
             }
-            @Override
-            protected void onSuccess(Bitmap bitmap) {
-                if (bitmap != null) {
-                    PrefUtil.setDesignImageUri(mAppContext, uri);
-                    mImagePreference.updateImage(bitmap);
-                } else {
-                    ToastMaster.showToast(mAppContext, getString(R.string.toast_bitmap_not_found), Toast.LENGTH_LONG);
-                }
+
+            final Bitmap finalBitmap = decodedBitmap;
+            if (isAdded()) {
+                requireActivity().runOnUiThread(() -> {
+                    if (finalBitmap != null) {
+                        PrefUtil.setDesignImageUri(mAppContext, uri);
+                        mImagePreference.updateImage(finalBitmap);
+                    } else {
+                        ToastMaster.showToast(mAppContext, getString(R.string.toast_bitmap_not_found), Toast.LENGTH_LONG);
+                    }
+                });
             }
-        }.execute(uri);
+        });
     }
 
     /**
@@ -230,6 +236,7 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
      * @see #sBindPreferenceSummaryToValueListener
      */
     private static void bindPreferenceSummaryToValue(Preference preference) {
+        if (preference == null) return;
         // Set the listener to watch for value changes.
         preference.setOnPreferenceChangeListener(sBindPreferenceSummaryToValueListener);
 
@@ -243,28 +250,24 @@ public class SettingsFragment extends PreferenceFragment implements Preference.O
      * A preference value change listener that updates the preference's summary
      * to reflect its new value.
      */
-    private static final Preference.OnPreferenceChangeListener sBindPreferenceSummaryToValueListener = new Preference.OnPreferenceChangeListener() {
-        @Override
-        public boolean onPreferenceChange(Preference preference, Object value) {
-            String stringValue = value.toString();
+    private static final Preference.OnPreferenceChangeListener sBindPreferenceSummaryToValueListener = (preference, value) -> {
+        String stringValue = value.toString();
 
-            if (preference instanceof ListPreference) {
-                // For list preferences, look up the correct display value in
-                // the preference's 'entries' list.
-                ListPreference listPreference = (ListPreference) preference;
-                int index = listPreference.findIndexOfValue(stringValue);
+        if (preference instanceof ListPreference listPreference) {
+            // For list preferences, look up the correct display value in
+            // the preference's 'entries' list.
+            int index = listPreference.findIndexOfValue(stringValue);
 
-                // Set the summary to reflect the new value.
-                preference.setSummary(index >= 0
-                                ? listPreference.getEntries()[index]
-                                : null);
-            } else {
-                // For all other preferences, set the summary to the value's
-                // simple string representation.
-                preference.setSummary(stringValue);
-            }
-
-            return true;
+            // Set the summary to reflect the new value.
+            preference.setSummary(index >= 0
+                    ? listPreference.getEntries()[index]
+                    : null);
+        } else {
+            // For all other preferences, set the summary to the value's
+            // simple string representation.
+            preference.setSummary(stringValue);
         }
+
+        return true;
     };
 }

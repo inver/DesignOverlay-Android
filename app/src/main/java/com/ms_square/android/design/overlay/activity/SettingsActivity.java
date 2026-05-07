@@ -13,17 +13,11 @@ import org.androidannotations.annotations.EActivity;
 public class SettingsActivity extends BaseActivity {
 
     public static Intent createIntent(Context context) {
-        Intent intent = new Intent(context, SettingsActivity_.class);
-        return intent;
+        return new Intent(context, SettingsActivity_.class);
     }
 
     @AfterViews
     void afterViews() {
-    }
-
-    @Override
-    protected boolean shouldRegisterToEventBus() {
-        return false;
     }
 
     @Override

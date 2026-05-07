@@ -2,8 +2,10 @@ package com.ms_square.android.design.overlay.util;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.net.Uri;
-import android.preference.PreferenceManager;
+
+import androidx.preference.PreferenceManager;
 
 import com.ms_square.android.util.DimenUtil;
 
@@ -80,7 +82,12 @@ public class PrefUtil {
     }
 
     public static int getGridColor(Context context) {
-        return getSharedPrefs(context).getInt(PREF_GRID_COLOR, 0x7732cd32);
+        String colorStr = getSharedPrefs(context).getString(PREF_GRID_COLOR, "#CCCDDC39");
+        try {
+            return Color.parseColor(colorStr);
+        } catch (IllegalArgumentException e) {
+            return 0xCCCDDC39;
+        }
     }
 
     public static void registerOnSharedPreferenceChangeListener(Context context,
@@ -105,11 +112,6 @@ public class PrefUtil {
     private static void apply(SharedPreferences.Editor editor) {
         editor.putLong(PREF_TIME_STAMP, getCurrentTime());
         editor.apply();
-    }
-
-    private static void commit(SharedPreferences.Editor editor) {
-        editor.putLong(PREF_TIME_STAMP, getCurrentTime());
-        editor.commit();
     }
 
     private static long getCurrentTime() {

@@ -1,7 +1,8 @@
 package com.ms_square.android.design.overlay.app;
 
 import android.app.Application;
-import android.preference.PreferenceManager;
+
+import androidx.preference.PreferenceManager;
 
 import com.ms_square.android.design.overlay.BuildConfig;
 import com.ms_square.android.design.overlay.R;
@@ -16,7 +17,7 @@ public class DesignOverlayApplication extends Application {
 
         if (BuildConfig.DEBUG) {
             // set up Timber for logging
-            Timber.plant(new Timber.DebugTree());
+            Timber.Forest.plant(new Timber.DebugTree());
         }
 
         // set default values for the app preference

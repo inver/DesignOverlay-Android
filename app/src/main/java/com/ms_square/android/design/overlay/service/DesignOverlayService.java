@@ -1,6 +1,6 @@
 package com.ms_square.android.design.overlay.service;
 
-import android.annotation.TargetApi;
+import android.annotation.SuppressLint;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -14,10 +14,13 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.PixelFormat;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.os.IBinder;
+
+import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
+
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
@@ -29,9 +32,10 @@ import com.ms_square.android.design.overlay.app.AppEnvironment;
 import com.ms_square.android.design.overlay.util.PrefUtil;
 import com.ms_square.android.design.overlay.view.GridView;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import timber.log.Timber;
 
@@ -53,6 +57,8 @@ public class DesignOverlayService extends Service {
 
     private GridView mGridView;
 
+    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+
     public static Intent createIntent(Context context) {
         return new Intent(context, DesignOverlayService.class);
     }
@@ -69,11 +75,7 @@ public class DesignOverlayService extends Service {
 
         showOverlay();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(mReceiver, new IntentFilter(ACTION_DISMISS), Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(mReceiver, new IntentFilter(ACTION_DISMISS));
-        }
+        ContextCompat.registerReceiver(this, mReceiver, new IntentFilter(ACTION_DISMISS), ContextCompat.RECEIVER_NOT_EXPORTED);
 
         PrefUtil.registerOnSharedPreferenceChangeListener(this, mPrefListener);
 
@@ -92,6 +94,7 @@ public class DesignOverlayService extends Service {
         unregisterReceiver(mReceiver);
         dismissOverlay();
         cancelNotification();
+        mExecutor.shutdown();
         super.onDestroy();
     }
 
@@ -100,10 +103,11 @@ public class DesignOverlayService extends Service {
         return null;
     }
 
+    @SuppressLint("InflateParams")
     private void showOverlay() {
         mRootView = LayoutInflater.from(this).inflate(R.layout.service_design_overlay, null, false);
-        mDesignImgView = (ImageView) mRootView.findViewById(R.id.design_image_view);
-        mGridView = (GridView) mRootView.findViewById(R.id.grid_view);
+        mDesignImgView = mRootView.findViewById(R.id.design_image_view);
+        mGridView = mRootView.findViewById(R.id.grid_view);
         updateImageVisibility();
         updateImageAlpha();
         updateImage();
@@ -124,50 +128,38 @@ public class DesignOverlayService extends Service {
         if (mDesignImgView != null) {
             final Uri uri = PrefUtil.getDesignImageUri(this);
             if (uri != null) {
-                new AsyncTask<Uri, Void, Bitmap>() {
-                    @Override
-                    protected Bitmap doInBackground(Uri... params) {
-                        Bitmap bitmap = null;
-                        InputStream stream = null;
-                        try {
-                            stream = getContentResolver().openInputStream(params[0]);
-                            bitmap = BitmapFactory.decodeStream(stream);
-                        } catch (FileNotFoundException fe) {
-                            Timber.w("File was not found: %s", fe.toString());
-                        } catch (SecurityException se) {
-                            Timber.w("No longer have access permission to the uri: %s", se.toString());
-                            // clear stored image Uri
-                            PrefUtil.setDesignImageUri(getApplicationContext(), null);
-                        } finally {
-                            try {
-                                if (stream != null) {
-                                    stream.close();
-                                }
-                            } catch (IOException ignore) {}
-                        }
-                        return bitmap;
+                mExecutor.execute(() -> {
+                    final Bitmap finalBitmap = loadBitmap(uri);
+                    if (mRootView != null) {
+                        mRootView.post(() -> {
+                            if (mDesignImgView != null) {
+                                mDesignImgView.setImageBitmap(finalBitmap);
+                            }
+                        });
                     }
-
-                    @Override
-                    protected void onPostExecute(Bitmap bitmap) {
-                        if (mDesignImgView != null) {
-                            mDesignImgView.setImageBitmap(bitmap);
-                        }
-                    }
-                }.execute(uri);
+                });
             }
         }
     }
 
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
+    @Nullable
+    private Bitmap loadBitmap(Uri uri) {
+        try (InputStream stream = getContentResolver().openInputStream(uri)) {
+            return BitmapFactory.decodeStream(stream);
+        } catch (SecurityException se) {
+            Timber.w("No longer have access permission to the uri: %s", se.toString());
+            // clear stored image Uri
+            PrefUtil.setDesignImageUri(getApplicationContext(), null);
+        } catch (IOException e) {
+            Timber.w("Failed to load image: %s", e.toString());
+        }
+        return null;
+    }
+
     private void updateImageAlpha() {
         if (mDesignImgView != null) {
             final int alpha = PrefUtil.getDesignImageAlpha(this); // 0 - 255
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-                mDesignImgView.setImageAlpha(alpha);
-            } else {
-                mDesignImgView.setAlpha(alpha);
-            }
+            mDesignImgView.setImageAlpha(alpha);
         }
     }
 
@@ -216,10 +208,10 @@ public class DesignOverlayService extends Service {
                 .setOngoing(true)
                 .setContentTitle(getString(R.string.notification_title))
                 .setContentText(getString(R.string.notification_small_text))
-                .setContentIntent(getNotificationIntent(null));
+                .setContentIntent(getNotificationActivityIntent());
 
         mBuilder.addAction(R.drawable.ic_action_clear, getString(R.string.notification_action_dismiss),
-                getNotificationIntent(ACTION_DISMISS));
+                getNotificationBroadcastIntent());
 
         // show the notification
         startForeground(NOTIFICATION_ID, mBuilder.build());
@@ -229,67 +221,41 @@ public class DesignOverlayService extends Service {
         mNotificationManager.cancel(NOTIFICATION_ID);
     }
 
-    private PendingIntent getNotificationIntent(String action) {
-        int flags = PendingIntent.FLAG_CANCEL_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags |= PendingIntent.FLAG_IMMUTABLE;
-        }
+    private PendingIntent getNotificationActivityIntent() {
+        int flags = PendingIntent.FLAG_CANCEL_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
+        Intent intent = SettingsActivity.createIntent(this);
+        return PendingIntent.getActivity(this, 0, intent, flags);
+    }
 
-        if (action == null) {
-            Intent intent = SettingsActivity.createIntent(this);
-            return PendingIntent.getActivity(this, 0, intent, flags);
-        } else {
-            Intent intent = new Intent(action);
-            return PendingIntent.getBroadcast(this, 0, intent, flags);
-        }
+    private PendingIntent getNotificationBroadcastIntent() {
+        int flags = PendingIntent.FLAG_CANCEL_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
+        Intent intent = new Intent(ACTION_DISMISS);
+        return PendingIntent.getBroadcast(this, 0, intent, flags);
     }
 
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
-            switch (action) {
-                case ACTION_DISMISS:
-                    stopSelf();
-                    break;
+            if (ACTION_DISMISS.equals(action)) {
+                stopSelf();
             }
         }
     };
 
-    private final SharedPreferences.OnSharedPreferenceChangeListener mPrefListener = new SharedPreferences.OnSharedPreferenceChangeListener() {
-        @Override
-        public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-            switch (key) {
-                case PrefUtil.PREF_FULLSCREEN: {
-                    dismissOverlay();
-                    showOverlay();
-                    break;
-                }
-                case PrefUtil.PREF_DESIGN_IMAGE_ENABLED: {
-                    updateImageVisibility();
-                    break;
-                }
-                case PrefUtil.PREF_DESIGN_IMAGE_URI: {
-                    updateImage();
-                    break;
-                }
-                case PrefUtil.PREF_DESIGN_IMAGE_ALPHA: {
-                    updateImageAlpha();
-                    break;
-                }
-                case PrefUtil.PREF_GRID_ENABLED: {
-                    updateGridVisibility();
-                    break;
-                }
-                case PrefUtil.PREF_GRID_SIZE, PrefUtil.PREF_ALIGN_RIGHT, PrefUtil.PREF_ALIGN_BOTTOM: {
-                    updateGridSize();
-                    break;
-                }
-                case PrefUtil.PREF_GRID_COLOR: {
-                    updateGridColor();
-                    break;
-                }
+    private final SharedPreferences.OnSharedPreferenceChangeListener mPrefListener = (sharedPreferences, key) -> {
+        if (key == null) return;
+        switch (key) {
+            case PrefUtil.PREF_FULLSCREEN -> {
+                dismissOverlay();
+                showOverlay();
             }
+            case PrefUtil.PREF_DESIGN_IMAGE_ENABLED -> updateImageVisibility();
+            case PrefUtil.PREF_DESIGN_IMAGE_URI -> updateImage();
+            case PrefUtil.PREF_DESIGN_IMAGE_ALPHA -> updateImageAlpha();
+            case PrefUtil.PREF_GRID_ENABLED -> updateGridVisibility();
+            case PrefUtil.PREF_GRID_SIZE, PrefUtil.PREF_ALIGN_RIGHT, PrefUtil.PREF_ALIGN_BOTTOM -> updateGridSize();
+            case PrefUtil.PREF_GRID_COLOR -> updateGridColor();
         }
     };
 
@@ -302,10 +268,8 @@ public class DesignOverlayService extends Service {
         }
 
         int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
-        if (isFullScreen) {
-            flags |= WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
-        }
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                | (isFullScreen ? WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN : 0);
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
